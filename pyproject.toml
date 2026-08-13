@@ -38,6 +38,6 @@ packages = ["src/caddie"]
 caddie-sqla = "caddie.hatch_build"
 
 [project.scripts]
-gen-dbtmodel = "caddie.gen-dbtmodel:main"
+gen-dbtmodel = "caddie.dbtmodel:main"
 hatch_build = "caddie.hatch_build:CustomBuildHook"
 linkml_extract_dd = "caddie.ftddd.linkml:cli"
