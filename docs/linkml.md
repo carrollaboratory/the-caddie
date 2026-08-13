@@ -50,6 +50,10 @@ Those provide a small number of additional recipes:
 | gen-ftddd | Builds the FTD data dictionary and enumeration CSV files | projects/data-dictionary/\*.csv, project/enumerations/\*.csv |
 | gen-dbtmodel | Builds a dbt .yml model file that contains dbt tests based on the model's definition | project/dbt/*.yml |
 | gen-dbt | Builds all of the above in a single command | (see above) |
+| init-submodule | Pulls the contents of the submodule's remote content and then performs a sparse checkout to hide everything except the common schema | src/{model}/schema/{submodule}|
+
+That init-submodule recipe only makes sense for our models that use a common
+submodule for shared classes, slots and enums.
 
 ## justfile
 
