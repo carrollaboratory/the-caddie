@@ -1,0 +1,43 @@
+[project]
+name = "the-caddie"
+description = "A companion utility for orchestrating LinkML release artifacts."
+readme = "README.md"
+authors = [
+    { name = "Eric Torstenson", email = "eric.s.torstenson@vumc.org" }
+]
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "hatchling>=1.27.0",
+    "linkml==1.9.6",
+    "linkml-runtime==1.9.5",
+    "rich>=15.0.0",
+    "tomli>=2.4.1 ; python_full_version >= '3.12'",
+]
+dynamic = ["version"]
+
+[build-system]
+requires = [
+    "hatchling>=1.21.0",
+    "hatch-vcs>=0.4.0",
+    "setuptools-scm>=8.0.0"
+]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# Prevents the long, ugly local commit hashes (+gxxxxxx) from inflating clean tags
+local_scheme = "no-local-version"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/caddie"]
+
+[project.entry-points.hatch]
+# Format: plugin-alias = "module.path"
+caddie-sqla = "caddie.hatch_build"
+
+[project.scripts]
+gen-dbtmodel = "caddie.gen-dbtmodel:main"
+hatch_build = "caddie.hatch_build:CustomBuildHook"
+linkml_extract_dd = "caddie.ftddd.linkml:cli"

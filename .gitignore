@@ -1,3 +1,8 @@
+# Local stuff
+.bash_history_local
+.envrc
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
