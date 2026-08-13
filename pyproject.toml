@@ -11,7 +11,7 @@ dependencies = [
     "linkml==1.9.6",
     "linkml-runtime==1.9.5",
     "rich>=15.0.0",
-    "tomli>=2.4.1 ; python_full_version >= '3.12'",
+    "tomli ; python_full_version < '3.11'",
 ]
 dynamic = ["version"]
 
