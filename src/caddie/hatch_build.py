@@ -8,9 +8,17 @@ except ImportError:
     import tomli as tomllib  # Python 3.9 / 3.10
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
+from hatchling.plugin import hookimpl
+
+
+@hookimpl
+def hatch_register_build_hook():
+    return CustomBuildHook
 
 
 class CustomBuildHook(BuildHookInterface):
+    PLUGIN_NAME = "caddie-sqla"
+
     def initialize(self, version, build_data):
         root = Path(self.root)
 
@@ -53,6 +61,7 @@ class CustomBuildHook(BuildHookInterface):
 
         build_data["shared_data"] = {}
         build_data["packages"] = [schema_name]
+        # build_data.setdefault("packages", []).append(schema_name)
         build_data["include"] = [f"{schema_name}/*.csv", f"{schema_name}/*.py"]
         build_data["artifacts"].append(str(dest_file))
         build_data["force_include"][str(dest_file)] = f"{schema_name}/{schema_name}.py"

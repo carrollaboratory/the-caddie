@@ -33,11 +33,10 @@ local_scheme = "no-local-version"
 [tool.hatch.build.targets.wheel]
 packages = ["src/caddie"]
 
-[project.entry-points."hatch.build.hooks"]
+[project.entry-points.hatch]
 # Format: plugin-alias = "module.path"
 caddie-sqla = "caddie.hatch_build"
 
 [project.scripts]
 gen-dbtmodel = "caddie.dbtmodel:main"
-hatch_build = "caddie.hatch_build:CustomBuildHook"
 linkml_extract_dd = "caddie.ftddd.linkml:cli"
