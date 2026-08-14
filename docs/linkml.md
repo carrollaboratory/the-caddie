@@ -29,6 +29,17 @@ just install
 
 ### Add the-caddie to Your Model
 
+To add the-caddie to your model, you simply use the uv add command:
+
+```bash
+uv add "the-caddie@git+https://github.com/carrollaboratory/the-caddie"
+uv add hatchling
+```
+
+These commands will make a small number of changes to your pyproject.toml file.
+The first will add our scripts as dependencies, and the hatchling library is
+required later on to package the SQL Alchemy model into a whl file.
+
 Some common gotchas:
 
 - Python 3.14. Some of the linkml components are currently incompatible with
@@ -80,3 +91,53 @@ site: gen-project gen-doc gen-dbt
 
 Once this is done, the github actions will build those along with everything
 else and simplify the release process.
+
+## Silence curie related linter warnings
+
+By using curies for enumeration keys, we are violating the convention of using
+vanilla strings for keys and meanings for curies. In order to tell change the
+linter's behavior. To do that, create a file in your model's root directory
+called, ".linkml-linter.yaml" with the following contents indside:
+
+```.linkml-linter.yaml
+rules:
+  permissible_values_format:
+    format: '^[a-zA-Z0-9_\-:]+$'
+```
+
+To to that into your model's linting command, you will need to edit the recipe,
+lint, to read as follows:
+
+```justfile
+# Run linting
+[group('model development')]
+lint:
+  uv run linkml-lint  --config .linkml-linter.yaml {{source_schema_dir}}
+```
+
+With this edit, we are adding the config created above to the command's
+execution. This should silence any warnings related to the use of curies as
+enumeration keys.
+
+## SQL Alchemy Wheel File
+
+We can package the sql alchemy model as a whl file in order to allow tools that
+rely on it to easily add it to their project using standard pip-like tooling.
+
+If you followed the installation directions at the beginning of this document,
+you should be able to simply make a few changes to your pyproject.toml file and
+drop the example worflow into your github workflows directory.
+
+When editing your pyproject.toml file, you should be careful not to interrupt an
+existing heading block (defined by square braces). Always be sure to add a new
+heading block immediately before another to avoid splitting an existing block
+up, resulting in settings being pulled into the wrong header.
+
+```pyproject.toml
+######## inside your build-system, add the following line
+build-backend = "hatchling.build"
+
+######## In it's own section,
+# Activate the hook
+[tool.hatch.build.targets.wheel.hooks.caddie-sqla]
+```

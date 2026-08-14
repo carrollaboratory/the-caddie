@@ -33,7 +33,7 @@ local_scheme = "no-local-version"
 [tool.hatch.build.targets.wheel]
 packages = ["src/caddie"]
 
-[project.entry-points.hatch]
+[project.entry-points."hatch.build.hooks"]
 # Format: plugin-alias = "module.path"
 caddie-sqla = "caddie.hatch_build"
 
