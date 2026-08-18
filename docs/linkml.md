@@ -137,6 +137,9 @@ up, resulting in settings being pulled into the wrong header.
 ######## inside your build-system, add the following line
 build-backend = "hatchling.build"
 
+# and b sure that the-caddie is present in the 'requires'
+requires = ["hatchling", "the-caddie", "uv-dynamic-versioning"]
+
 ######## In it's own section,
 # Activate the hook
 [tool.hatch.build.targets.wheel.hooks.caddie-sqla]
