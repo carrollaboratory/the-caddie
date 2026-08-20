@@ -40,3 +40,4 @@ caddie-sqla = "caddie.hatch_build"
 [project.scripts]
 gen-dbtmodel = "caddie.dbtmodel:main"
 linkml_extract_dd = "caddie.ftddd.linkml:cli"
+gen-monolith = "caddie.gen_monolith:main"
