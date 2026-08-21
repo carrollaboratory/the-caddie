@@ -1,4 +1,3 @@
-import re
 from argparse import ArgumentParser
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -6,12 +5,6 @@ from pathlib import Path
 from linkml_runtime.dumpers import yaml_dumper
 from linkml_runtime.utils.schemaview import SchemaView
 from packaging.version import Version
-
-
-def to_snake_case(name: str) -> str:
-    s = re.sub(r"(?<=[a-z])(?=[A-Z])|[-_\s]+", "_", name)
-    return s.strip("_").lower()
-
 
 try:
     # Replace "your_package_name" with the actual "name" field from your pyproject.toml

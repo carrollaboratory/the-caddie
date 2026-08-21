@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "hatchling>=1.27.0",
+    "httpx>=0.28.1",
     "linkml>=1.9.6, <2.0.0",
     "linkml-runtime>=1.9.5, <2.0.0",
     "rich>=15.0.0",
@@ -41,3 +42,4 @@ caddie-sqla = "caddie.hatch_build"
 gen-dbtmodel = "caddie.dbtmodel:main"
 linkml_extract_dd = "caddie.ftddd.linkml:cli"
 gen-monolith = "caddie.gen_monolith:main"
+update-cam = "caddie.update_cam:main"
