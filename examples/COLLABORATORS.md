@@ -1,19 +1,21 @@
 ## Welcome to the {program} Access Model 🚀
 
 This repository serves as a downstream model designed to specialize the
-[Common Access Model](https://github.com/include-dcc/common-access-model). The
-structural foundation of this project is maintained and version-controlled via a
-Git submodule containing the core schema.
+[Common Access Model](https://github.com/include-dcc/common-access-model). A
+pinned version of this upstream model is captured in
+src/kf_access_model/schema/upstream-models/common_access_model*.yaml.
 
 The purpose of this model is to build out a program-specific extension (or
-profile) by importing the core elements and layering the {program} unique data
+profile) by importing the core elements and layering the Kids First unique data
 requirements on top.
 
 ## Key Integration Guidelines
 
-- Do Not Modify the Submodule from within this repository: All foundational
-  classes, slots, and enums live in the core submodule. Any program-specific
-  customizations must happen strictly in your downstream files.
+- The upstream-models/common_access_model.yaml should never be updated. This
+  should be treated like any other machine generated file and left alone. If
+  changes must be made to the upstream model, they should be made directly to
+  that model, a release published and the local version updated using the
+  tooling proved.
 - Leverage Imports: At this time, the current model imports the
   common_access_model.yaml directly within the main model definition.
 - Extend via Inheritance: Use the is_a or mixins keys to create program-specific
@@ -22,63 +24,49 @@ requirements on top.
   inherited core slot just for your program's classes, use the slot_usage
   feature.
 
-## Getting Started
+## Updating to the newest common_access_model
 
-If you aren't already familiar with working with submodules, there are just a
-couple of key takeaways to keep in mind:
-
-- The submodule has been pinned to a specific git commit hash to avoid
-  unexpected changes the CAM creeping into downstream model interfering with
-  local builds, CI/CD scripts, etc.
-- The submodule itself should only be updated by deliberate action with the
-  expectation that downstream model changes may be required to reflect incoming
-  updates.
-
-### Initializing the submodule
-
-Before you can actually compile the model on a new machine, you'll need to pull
-the submodule's content down. A convenient just recipe has been created for
-exactly that:
+Upon new releases in the common_access_model, a flattened version of the model
+is generated and made available immediately. Tooling is provided to
+automatically pull the newest version down and link it correctly to work without
+making any changes to the local model's yaml.
 
 ```bash
-just init-submodule
+just update-cam
 ```
 
-or, if you prefer to do it directly yourself:
+This recipe will download the newest version to the directory,
+src/kf_access_model/schema/upstream-models and create a symbolic link from the
+common name, common_access_model.yaml. As a result, once that one entry has been
+made to the local model, subsequent updates should work without further updates
+to the model itself.
 
-```bash
-git submodule update --init --recursive
-# make sure nothing is broken
-just lint && just test
+```model-yaml
+imports:
+  - upstream-models/common_access_model
 ```
 
-Subsequent calls can drop the init if you know for a fact that no other
-submodules have been added. The just recipe does call the linter and runs the
-linkml test as a subsequent depenendency, in case there are upstream changes
-that invalidate the downstream model.
+The current version of the common_access_model and the symbolic link should be
+properly managed by git so that all collaborators will be working on the same
+core model.
 
-### Updating the pinned hash
+> [WARNING] This will bring the upstream model to the most current version and,
+> as such, should only be performed according to planned upgrades.
 
-Once it has been decided that it is time to update the CAM to use the latest
-version, the maintainer should run the following commands to fetch, test and
-lock the new version into the downstream model's main.
+## Release Artifacts
 
-```bash
-# Navigate into the submodule directory
-cd src/kf_access_model/schema/common_access_model
+There are a number of artifacts which are used by various scripts including the
+dbt utilities which are built via github actions during release. To trigger the
+build, create releases linked to a semantic version preceded with a v (i.e.
+v1.0.1).
 
-# Fetch and check out the desired remote target (e.g., main branch)
-git fetch origin
-git checkout origin/main
+These artifacts include:
 
-# Move back to the repository root
-cd -
+- SQL Alchemy model
+- dbt model yml file
+- SQL Schema
+- data dictionary conformant to the current FTD spec
+- enumerations csv file extracted from all of the permissible values
 
-# Run linter and tests
-just lint && just test
-
-
-# Commit the new submodule hash pointer to this repository
-git add src/kf_access_model/schema/common_access_model
-git commit -m "chore: update common_access_model submodule to latest hash"
-```
+The last two are used by this group's dbt utilities tooling. The SQL Alchemy
+model is used by a handful of other scripts.
