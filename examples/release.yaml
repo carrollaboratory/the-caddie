@@ -55,7 +55,6 @@ jobs:
 
       - name: Generate all model artifacts
         run: |
-          just init-submodule
           just site
         # Runs gen-project, gen-doc, _gen_ftddd, _gen_sqla, _gen_harmony
         # Produces: project/sqlalchemy/, project/harmony/, project/owl/, etc.
