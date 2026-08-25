@@ -116,9 +116,11 @@ class UpstreamModel:
 
         if upstream_model_filename.exists():
             if local_model_content:
-                local_model_content["imports"].append(
-                    str(upstream_model_filename.with_suffix(""))
+                upstream_import = (
+                    upstream_model_filename.parent.relative_to(local_model.parent)
+                    / upstream_model_filename.stem
                 )
+                local_model_content["imports"].append(str(upstream_import))
                 with local_model.open("wt") as f:  # type: ignore
                     yaml.dump(local_model_content, f)
                 print(
