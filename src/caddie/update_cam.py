@@ -1,13 +1,22 @@
 import logging
 import re
+import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
 import httpx
+from ruyaml import YAML
+from ruyaml.scanner import ScannerError
+
+yaml = YAML()
+yaml.preserve_quotes = True
+# Force strict sequence formatting without extra interstitial lines
+yaml.top_level_block_style_scalar = True
+yaml.default_flow_style = False
 
 from . import to_snake_case
 
-mcp = re.compile(r"(?P<model>[A-Za-z_]*)-(?P<version>\d\.\d\.\d).yaml")
+mcp = re.compile(r"(?P<model>[A-Za-z_]*)-(?P<version>\d\.\d\.\d)")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,38 +75,74 @@ class UpstreamModel:
             except ValueError:
                 pass
 
-    def update_release(self, release_details: dict, force: bool = False):
+    def update_release(
+        self, release_details: dict, force: bool = False, local_model: str | None = None
+    ):
         self.localdir.mkdir(exist_ok=True, parents=True)
 
-        local_model_filename = self.localdir / release_details["filename"]
+        # Catch the unversioned links as well.
+        mcp2 = re.compile(r"(?P<model>[A-Za-z_]*)")
+        local_model_content = None
+        if local_model is not None:
+            local_model = Path(local_model)  # type: ignore
+            try:
+                local_model_content = yaml.load(local_model.open("rt"))  # type: ignore
+                local_model_content["imports"] = [
+                    imp
+                    for imp in local_model_content["imports"]
+                    if not mcp2.search(imp)
+                ]
 
-        if force or not local_model_filename.exists():
+            except ScannerError as e:
+                logger.error(
+                    f"Unable to properly parse the model file, {local_model!s} "
+                    f"{e.problem_mark}: {e.problem}"
+                )
+                sys.exit(1)
+
+        upstream_model_filename = self.localdir / release_details["filename"]
+
+        if force or not upstream_model_filename.exists():
             headers = {"User-Agent": "httpx-github-client"}
             with httpx.stream(
                 "GET", release_details["url"], headers=headers, follow_redirects=True
             ) as response:
                 response.raise_for_status()
 
-                with local_model_filename.open("wb") as f:
+                with upstream_model_filename.open("wb") as f:
                     for chunk in response.iter_bytes(chunk_size=8192):
                         f.write(chunk)
-                logger.info(f"Model file, {local_model_filename}, saved.")
+                logger.info(f"Model file, {upstream_model_filename}, saved.")
 
-        if local_model_filename.exists():
-            symfilename = self.localdir / f"{release_details['model_name']}.yaml"
-            if symfilename.exists() or symfilename.is_symlink():
-                symfilename.unlink()
+        if upstream_model_filename.exists():
+            if local_model_content:
+                local_model_content["imports"].append(
+                    str(upstream_model_filename.with_suffix(""))
+                )
+                with local_model.open("wt") as f:  # type: ignore
+                    yaml.dump(local_model_content, f)
+                print(
+                    "***********************************************************\n"
+                    "* \n"
+                    f"* {local_model} has been updated to import '{upstream_model_filename.with_suffix('')}'\n"
+                    "* \n"
+                    "***********************************************************\n"
+                )
+            else:
+                symfilename = self.localdir / f"{release_details['model_name']}.yaml"
+                if symfilename.exists() or symfilename.is_symlink():
+                    symfilename.unlink()
 
-            symfilename.symlink_to(local_model_filename.name)
-            logger.info(f"{symfilename} linked and ready for use.")
-            print(
-                "***********************************************************\n"
-                "* \n"
-                f"* {symfilename} linked and ready for use.\n"
-                f"* To add this to a new model, simply import '{symfilename}' to the local model's imports\n"
-                "* \n"
-                "************************************************************"
-            )
+                symfilename.symlink_to(upstream_model_filename.name)
+                logger.info(f"{symfilename} linked and ready for use.")
+                print(
+                    "***********************************************************\n"
+                    "* \n"
+                    f"* {symfilename} linked and ready for use.\n"
+                    f"* To add this to a new model, simply import '{symfilename}' to the local model's imports\n"
+                    "* \n"
+                    "************************************************************"
+                )
 
 
 def main():
@@ -117,6 +162,14 @@ def main():
         default="upstream-models",
         help="Local directory where the upstream models are to be written",
     )
+
+    parser.add_argument(
+        "-l",
+        "--local-model",
+        default=None,
+        help="Local model filename to be updated. If not provided, the tool will generate a symlink and leave updates to the model import to the user.",
+    )
+
     args = parser.parse_args()
 
     gh = "https://github.com/"
@@ -128,4 +181,4 @@ def main():
     release_details = streamer.list_assets()
 
     assert release_details
-    streamer.update_release(release_details)
+    streamer.update_release(release_details, local_model=args.local_model)
