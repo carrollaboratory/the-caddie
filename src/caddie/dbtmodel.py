@@ -45,6 +45,29 @@ Inferred dbt tests, per column:
                         directory (e.g. tests/generic/) for these tests
                         to resolve.
 
+Slots whose acceptable values are described via a multi-member `any_of`
+(instead of, or in addition to, a plain `range`) are handled specially --
+see `build_any_of_test()` for the full logic. In short:
+
+  - `any_of` members that are ALL enums (e.g. `EnumSubjectType` +
+    `EnumUnknownOther`) produce a single `accepted_values` test built from
+    the union of every listed enum's permissible values.
+  - `any_of` members that mix a base semantic type (`Concept` or
+    `uriorcurie`) with one or more enums (e.g. `Concept` +
+    `EnumStudyDesign`) produce only a format test for the base type
+    (`curie_format` for `Concept`, `uri_or_curie_format` for `uriorcurie`).
+    The enum member is treated as a recommended/example value set, not a
+    closed one, so it is intentionally NOT turned into an `accepted_values`
+    test -- doing so would reject valid values outside the enum.
+  - `any_of` members that are neither enums nor a recognized base type
+    (e.g. site-specific ID types like `obGlobalID` / `deGlobalID` /
+    `msGlobalID` that only share an `xx-{nanoid}` naming convention)
+    produce a lenient `accepted_id_prefix` test checking that the value
+    starts with one of the expected two-letter prefixes. `curie_format`
+    and `accepted_id_prefix` are custom generic tests and, like
+    `uri_or_curie_format` / `valid_uri_format`, must be defined in your
+    dbt project's macros/ directory for these tests to resolve.
+
 And per table:
   - a `dbt_utils.unique_combination_of_columns` test for composite primary
     keys (e.g. on linking tables) and for any LinkML `unique_keys` spanning
@@ -136,6 +159,114 @@ def resolve_type_root(range_name: str | None, view: SchemaView) -> str | None:
     return current if current in visited else None
 
 
+def classify_any_of_range(range_name: str, view: SchemaView) -> str:
+    """Classify a single `any_of` member's range into a coarse bucket that
+    determines how the group as a whole should be tested.
+
+    Returns one of: "enum", "uriorcurie", "uri", "concept", "other".
+    """
+    if range_name in view.all_enums():
+        return "enum"
+    type_root = resolve_type_root(range_name, view)
+    if type_root == "uriorcurie":
+        return "uriorcurie"
+    if type_root == "uri":
+        return "uri"
+    if range_name == "Concept":
+        return "concept"
+    return "other"
+
+
+def build_any_of_test(slot: SlotDefinition, view: SchemaView) -> Any | None:
+    """Build the single dbt test appropriate for a slot whose acceptable
+    values are defined via `any_of` rather than (or in addition to) a plain
+    `range`. Returns None if the slot has no `any_of` to consider.
+
+    Three shapes are supported, matched in priority order:
+
+    1. One or more members resolve to a "base" semantic type -- currently
+       `Concept` or `uriorcurie` (and, for completeness, the related `uri`
+       type). Any other members are enums that document a recommended or
+       example set of values, e.g.:
+
+           any_of:
+             - range: Concept
+             - range: EnumStudyDesign
+
+       Because the enum is advisory only, the value just needs to be a
+       syntactically valid Concept/URI/CURIE -- it does NOT need to appear
+       in the enum. So we emit only the base type's format test and
+       deliberately ignore the enum member(s); adding an `accepted_values`
+       test here would incorrectly reject valid out-of-enum values.
+
+    2. Every member is an enum, with no base-type member present -- the
+       acceptable values are the union of all of those enums' permissible
+       values, e.g.:
+
+           any_of:
+             - range: EnumSubjectType
+             - range: EnumUnknownOther
+
+    3. Members are unrecognized (neither an enum nor a known base type) --
+       e.g. site-specific ID types that only share a naming convention,
+       such as:
+
+           any_of:
+             - range: obGlobalID
+             - range: deGlobalID
+             - range: msGlobalID
+
+       There isn't enough schema information here for a precise test, so
+       we fall back to a lenient check that the value starts with one of
+       the expected `xx-` prefixes (first two letters of each range name,
+       lowercased, per the `xx-{nanoid}` naming convention), via the
+       `accepted_id_prefix` custom generic test.
+    """
+    any_of = getattr(slot, "any_of", None)
+    if not any_of:
+        return None
+
+    member_ranges = [str(m.range) for m in any_of if getattr(m, "range", None)]
+    if not member_ranges:
+        return None
+
+    buckets: dict[str, list[str]] = {}
+    for r in member_ranges:
+        buckets.setdefault(classify_any_of_range(r, view), []).append(r)
+
+    # Case 1: a base semantic type is present -- test its format only, and
+    # ignore any enum members (they're recommended/example values, not a
+    # closed set).
+    for kind, test_name in (
+        ("uriorcurie", "uri_or_curie_format"),
+        ("uri", "valid_uri_format"),
+        ("concept", "curie_format"),
+    ):
+        if kind in buckets:
+            return test_name
+
+    # Case 2: every member is an enum -> union of permissible values.
+    if buckets.get("enum") and not buckets.get("other"):
+        values: list[str] = []
+        seen: set[str] = set()
+        for enum_name in buckets["enum"]:
+            enum_def = view.get_enum(enum_name)
+            for v in enum_def.permissible_values.keys():
+                if v not in seen:
+                    seen.add(v)
+                    values.append(v)
+        if values:
+            return {"accepted_values": {"arguments": {"values": values}}}
+        return None
+
+    # Case 3: unrecognized types with no enum/format info to test against.
+    if buckets.get("other"):
+        prefixes = sorted({name[:2].lower() + "-" for name in buckets["other"]})
+        return {"accepted_id_prefix": {"arguments": {"prefixes": prefixes}}}
+
+    return None
+
+
 def build_column_tests(
     slot: SlotDefinition,
     pk_names: list[str],
@@ -160,61 +291,81 @@ def build_column_tests(
     if slot.multivalued:
         return tests
 
-    # uriorcurie / uri: LinkML's URI-ish types don't map to a SQL
-    # constraint on their own, so add a custom generic test (see
-    # `uri_or_curie_format` / `valid_uri_format` in the companion
-    # macros this script emits) that checks the value's lexical form
-    # against the URI/CURIE grammar. Resolve through the type's `typeof`
-    # chain so custom subtypes (e.g. `IdentifierType: typeof: uriorcurie`)
-    # are caught too, not just the bare `uriorcurie`/`uri` type names.
-    type_root = resolve_type_root(str(slot.range) if slot.range else None, view)
-    if type_root == "uriorcurie":
-        tests.append("uri_or_curie_format")
-    elif type_root == "uri":
-        tests.append("valid_uri_format")
+    # any_of: some slots define their acceptable values via a multi-member
+    # `any_of` list instead of (or in addition to) a plain `range` -- e.g.
+    # `range: Concept` paired with `any_of: [Concept, EnumStudyDesign]`, or
+    # an any_of made up entirely of enums. See build_any_of_test() for the
+    # three shapes this covers. When present, this takes priority over the
+    # plain-range format/enum tests below, since it's the more specific
+    # description of what values are actually acceptable.
+    any_of_test = build_any_of_test(slot, view)
+    if any_of_test is not None:
+        tests.append(any_of_test)
+    else:
+        # uriorcurie / uri: LinkML's URI-ish types don't map to a SQL
+        # constraint on their own, so add a custom generic test (see
+        # `uri_or_curie_format` / `valid_uri_format` in the companion
+        # macros this script emits) that checks the value's lexical form
+        # against the URI/CURIE grammar. Resolve through the type's
+        # `typeof` chain so custom subtypes (e.g. `IdentifierType: typeof:
+        # uriorcurie`) are caught too, not just the bare `uriorcurie`/`uri`
+        # type names.
+        type_root = resolve_type_root(str(slot.range) if slot.range else None, view)
+        if type_root == "uriorcurie":
+            tests.append("uri_or_curie_format")
+        elif type_root == "uri":
+            tests.append("valid_uri_format")
 
     # relationships (foreign key): prefer the transformer's own
     # `foreign_key` annotation, which it sets on every FK/backref column
     # it generates (both ordinary FK slots and linking-table backrefs).
-    fk_target = annotation_value(slot, "foreign_key")
-    if fk_target and "." in fk_target:
-        target_class, target_slot_name = fk_target.split(".", 1)
-        target_table = class_to_table.get(target_class)
-        if target_table:
-            tests.append(
-                {
-                    "relationships": {
-                        "arguments": {
-                            "to": f"source('{source_name}', '{target_table}')",
-                            "field": f'"{target_slot_name}"',
-                            "column_name": f'"{slot.name}"',
+    #
+    # Skipped entirely when `any_of` produced a test above: a slot like
+    # `range: Concept` + `any_of: [EnumSubjectType, EnumUnknownOther]` has
+    # a class range (Concept), so this block would otherwise treat it as a
+    # straight FK into the concept table -- but any_of means the actual
+    # acceptable values are the enum-derived set (or, for base-type cases,
+    # any syntactically valid Concept/CURIE), not "any row in Concept".
+    if any_of_test is None:
+        fk_target = annotation_value(slot, "foreign_key")
+        if fk_target and "." in fk_target:
+            target_class, target_slot_name = fk_target.split(".", 1)
+            target_table = class_to_table.get(target_class)
+            if target_table:
+                tests.append(
+                    {
+                        "relationships": {
+                            "arguments": {
+                                "to": f"source('{source_name}', '{target_table}')",
+                                "field": f'"{target_slot_name}"',
+                                "column_name": f'"{slot.name}"',
+                            }
                         }
                     }
-                }
-            )
-    elif slot.range and slot.range in view.all_classes():
-        # Fallback for schemas/LinkML versions where the annotation isn't
-        # present but the range is still clearly a class reference.
-        target_id_slot = view.get_identifier_slot(slot.range)
-        target_table = class_to_table.get(slot.range)
-        if target_id_slot and target_table:
-            tests.append(
-                {
-                    "relationships": {
-                        "arguments": {
-                            "to": f"source('{source_name}', '{target_table}')",
-                            "field": f'"{target_id_slot.name}"',
-                            "column_name": f'"{slot.name}"',
+                )
+        elif slot.range and slot.range in view.all_classes():
+            # Fallback for schemas/LinkML versions where the annotation isn't
+            # present but the range is still clearly a class reference.
+            target_id_slot = view.get_identifier_slot(slot.range)
+            target_table = class_to_table.get(slot.range)
+            if target_id_slot and target_table:
+                tests.append(
+                    {
+                        "relationships": {
+                            "arguments": {
+                                "to": f"source('{source_name}', '{target_table}')",
+                                "field": f'"{target_id_slot.name}"',
+                                "column_name": f'"{slot.name}"',
+                            }
                         }
                     }
-                }
-            )
-    elif slot.range and slot.range in view.all_enums():
-        # accepted_values: range is an enum with a fixed permissible_values set
-        enum_def = view.get_enum(slot.range)
-        values = list(enum_def.permissible_values.keys())
-        if values:
-            tests.append({"accepted_values": {"arguments": {"values": values}}})
+                )
+        elif slot.range and slot.range in view.all_enums():
+            # accepted_values: range is an enum with a fixed permissible_values set.
+            enum_def = view.get_enum(slot.range)
+            values = list(enum_def.permissible_values.keys())
+            if values:
+                tests.append({"accepted_values": {"arguments": {"values": values}}})
 
     return tests
 
