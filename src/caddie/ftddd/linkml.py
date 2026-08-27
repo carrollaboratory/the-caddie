@@ -219,6 +219,53 @@ class LinkMLExtract(Generator):
 
                             if len(variable.enumerations) == 0:
                                 variable.comment = sv_enum["description"].strip()
+                        else:
+                            # Look for "any_of" where all of them are actual enums
+                            # import pdb
+                            #
+                            # pdb.set_trace()
+                            if hasattr(s, "any_of") and s.any_of:
+                                # We won't bother with these if the slot's
+                                # range is included as one of the options
+                                if s.range not in [
+                                    getattr(x, "range", None) for x in s.any_of
+                                ]:
+                                    for expr in s.any_of:
+                                        range_name = getattr(expr, "range", None)
+                                        if range_name and range_name in sv.all_enums():
+                                            sv_enum = sv.get_enum(range_name)
+
+                                            for (
+                                                ename,
+                                                enum,
+                                            ) in sv_enum.permissible_values.items():
+                                                desc = enum["description"]
+                                                if desc is None:
+                                                    desc = enum["title"]
+
+                                                e_title = enum["title"]
+                                                if e_title is None or e_title == desc:
+                                                    e_title = ""
+
+                                                e_meaning = enum["meaning"]
+                                                if e_meaning is None:
+                                                    e_meaning = ""
+
+                                                e_system = f"https://anvilproject.github.io/acr-harmonized-data-model/{sv_enum.name}"
+
+                                                variable.add_enumeration(
+                                                    enum["text"],
+                                                    desc,
+                                                    e_title,
+                                                    e_meaning,
+                                                    e_system,
+                                                    sv_enum.name,
+                                                )
+
+                                            if len(variable.enumerations) == 0:
+                                                variable.comment = sv_enum[
+                                                    "description"
+                                                ].strip()
 
                         if s.unit:
                             variable.units = f"UCUM:{s.unit['ucum_code']}"
