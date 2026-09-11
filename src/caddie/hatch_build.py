@@ -36,23 +36,22 @@ class CustomBuildHook(BuildHookInterface):
         pkg_dir.mkdir(parents=True, exist_ok=True)
         dest_file = pkg_dir / f"{schema_name}.py"
 
-        if not dest_file.exists():
-            gen_sqla = root / ".venv" / "bin" / "gen-sqla"
-            if not gen_sqla.exists():
-                found = shutil.which("gen-sqla")
-                if not found:
-                    raise RuntimeError(
-                        "gen-sqla not found. Run `uv sync --group dev` first, "
-                        "or run `just _gen_sqla` before `uv build`."
-                    )
-                gen_sqla = Path(found)
-
-            with open(dest_file, "w") as out:
-                subprocess.run(
-                    [str(gen_sqla), str(source_schema_path), "--declarative"],
-                    stdout=out,
-                    check=True,
+        gen_sqla = root / ".venv" / "bin" / "gen-sqla"
+        if not gen_sqla.exists():
+            found = shutil.which("gen-sqla")
+            if not found:
+                raise RuntimeError(
+                    "gen-sqla not found. Run `uv sync --group dev` first, "
+                    "or run `just _gen_sqla` before `uv build`."
                 )
+            gen_sqla = Path(found)
+
+        with open(dest_file, "w") as out:
+            subprocess.run(
+                [str(gen_sqla), str(source_schema_path), "--declarative"],
+                stdout=out,
+                check=True,
+            )
 
         # Also copy to project/sqlalchemy/ for consistency with just site output
         sqla_dir = root / "project" / "sqlalchemy"
