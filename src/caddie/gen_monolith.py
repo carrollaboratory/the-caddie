@@ -6,15 +6,6 @@ from linkml_runtime.dumpers import yaml_dumper
 from linkml_runtime.utils.schemaview import SchemaView
 from packaging.version import Version
 
-try:
-    # Replace "your_package_name" with the actual "name" field from your pyproject.toml
-
-    __version__ = version("common_access_model")
-    version = Version(__version__).base_version
-
-except PackageNotFoundError:
-    __version__ = "unknown"
-
 
 def main():
     model_name = next(Path("src").glob("*/schema"), None)
@@ -22,6 +13,18 @@ def main():
         model_name = model_name.parent.name
 
     default = f"src/{model_name}/schema/{model_name}.yaml"
+
+    try:
+        # Replace "your_package_name" with the actual "name" field from your pyproject.toml
+        assert model_name
+        __version__ = version(model_name)
+        the_version = Version(__version__).base_version
+
+    except PackageNotFoundError:
+        __version__ = "unknown"
+        the_version = __version__
+
+    assert the_version
 
     parser = ArgumentParser(
         prog="gen-monolith",
@@ -41,7 +44,7 @@ def main():
     sv.merge_imports()
     if sv.schema is not None:
         Path("project/monolith").mkdir(parents=True, exist_ok=True)
-        monofile = f"project/monolith/{model_name}-{version!s}.yaml"
+        monofile = f"project/monolith/{model_name}-{the_version!s}.yaml"
         yaml_dumper.dump(sv.schema, monofile)
         print(f"-> {monofile}")
     else:
