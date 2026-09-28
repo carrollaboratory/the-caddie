@@ -41,7 +41,7 @@ def main():
     sv.merge_imports()
     if sv.schema is not None:
         Path("project/monolith").mkdir(parents=True, exist_ok=True)
-        monofile = f"project/monolith/{model_name}-{version}.yaml"
+        monofile = f"project/monolith/{model_name}-{version!s}.yaml"
         yaml_dumper.dump(sv.schema, monofile)
         print(f"-> {monofile}")
     else:
