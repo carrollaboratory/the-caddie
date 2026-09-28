@@ -565,12 +565,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("project/dbt/src_dev_include_access.yml"),
+        default="",
+        # default=Path("project/dbt/src_dev_include_access.yml"),
         help="Path to write the generated dbt sources YAML file.",
     )
     parser.add_argument(
         "--source-name",
-        default="dev_include_access",
+        type=str,
+        # default="dev_include_access",
         help="dbt source name to use in the generated file.",
     )
     parser.add_argument(
@@ -604,22 +606,27 @@ def main(argv: list[str] | None = None) -> int:
         if not schema_path.exists():
             raise FileNotFoundError(f"LinkML schema not found: {schema_path}")
 
+        source_name = args.source_name or schema_path.stem
         config_dict = generate_dbt_sources(
             str(schema_path),
-            source_name=args.source_name,
+            source_name=source_name,
             source_description=args.source_description,
             include_abstract=args.include_abstract_tables,
             composite_key_tests=args.composite_key_tests,
         )
 
-        args.output.parent.mkdir(exist_ok=True, parents=True)
-        with args.output.open("w") as f:
+        output = args.output
+        if str(output) == ".":
+            output = Path("project/dbt/") / f"{source_name}.yml"
+
+        output.parent.mkdir(exist_ok=True, parents=True)
+        with output.open("w") as f:
             # sort_keys=False preserves the version -> sources hierarchy
             yaml.dump(
                 config_dict, f, sort_keys=False, default_flow_style=False, width=512
             )
 
-        logger.info("Successfully generated dbt sources file at %s", args.output)
+        logger.info("Successfully generated dbt sources file at %s", output)
         return 0
 
     except Exception as exc:  # noqa: BLE001 - surface any failure clearly to CI
